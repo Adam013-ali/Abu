@@ -1,201 +1,303 @@
-import os, re
-from dotenv import load_dotenv
-from google import genai
+import os, random
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import ApplicationBuilder, MessageHandler, CommandHandler, CallbackQueryHandler, filters, ContextTypes
-import random
-
-load_dotenv()
 
 TELEGRAM_TOKEN = os.getenv("TELEGRAM_TOKEN")
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-client = genai.Client(api_key=GEMINI_API_KEY)
 
-def ask_gemini(prompt, lang="uz"):
-    try:
-        if lang == "uz":
-            system = "Sen o'zbek tilida javob beradigan qiziqarli va kulgili botsan. Har doim o'zbek tilida javob ber. Qisqa va kulgili bo'l."
-        else:
-            system = "You are a fun and hilarious bot. Always respond in English. Keep it short and funny."
-        response = client.models.generate_content(
-            model="gemini-2.0-flash-lite",
-            contents=f"{system}\n\n{prompt}"
-        )
-        return response.text.strip()
-    except Exception as e:
-        print(f"Gemini error: {e}")
-        if lang == "uz":
-            return "Voy, xatolik yuz berdi! Keyinroq urinib ko'ring 😅"
-        return "Oops, something went wrong! Try again 😅"
+ROASTS = [
+    # === UMUMIY ===
+    "Siz shunchalik sekin yugurасизки, turtles sizdan kechirim so'raydi! 🐢",
+    "Siz shunchalik balandparavozki, hatto Google Maps sizni topa olmaydi! 📍",
+    "Siz shunchalik kamgapki, jimlik sizdan gapiradi! 🤫",
+    "Siz shunchalik uyquchanki, kofe sizdan ruxsat so'raydi! ☕",
+    "Siz shunchalik kechikasizki, o'z tug'ilgan kuningizga ham kech kelgansiz! 🎂",
+    "Siz shunchalik charchaysizki, o'tirgan kursi ham dam oladi! 🪑",
+    "Siz shunchalik sekin yurasizki, snail sizga yo'l beradi! 🐌",
+    "Siz shunchalik ko'p ovqat yeyasizki, restoran sizni ko'rsa narxlarini oshiradi! 🍽️",
+    "Siz shunchalik aqllisizki, Google ham ba'zan sizdan so'raydi! 🧠",
+    "Siz shunchalik optimistki, hatto kompyuter viruslari sizga umid bag'ishlaydi! 💻",
+    "Siz shunchalik baxtlisizki, muammolar ham sizga hasad qiladi! 🍀",
+    "Siz shunchalik go'zalsizki, ko'zgu sizga iltimos qilib qaraydi! 🪞",
+    "Siz shunchalik dono'siz, entsiklopediya sizdan ma'lumot oladi! 📚",
+    "Siz shunchalik kuchli, devor sizdan yo'l so'raydi! 💪",
+    "Siz shunchalik mashhursiz, hatto toshlar sizni taniydi! 🪨",
 
-def detect_lang(text):
-    uzbek_chars = set("qg'ʻğşçöüıÇÖÜĞŞ")
-    uzbek_words = ["men", "sen", "u", "biz", "siz", "ular", "va", "bu", "ha", "yo'q",
-                   "nima", "qani", "qayer", "kim", "qachon", "nega", "qanday", "yaxshi",
-                   "rahmat", "salom", "xayr", "bo'ldi", "kerak", "emas", "bor", "yo",
-                   "lekin", "chunki", "agar", "ham", "ham", "bir", "ikki", "uch"]
-    text_lower = text.lower()
-    if any(c in text_lower for c in uzbek_chars):
-        return "uz"
-    if any(f" {w} " in f" {text_lower} " for w in uzbek_words):
-        return "uz"
-    return "en"
+    # === MUHABBAT ===
+    "Siz shunchalik romantikki, Valentine's Day sizni ko'rsa qochadi! 💔",
+    "Crush sizga qaraydi, siz esa stolga qarasangiz! Klassik! 😅",
+    "Sevgi deb yig'laysiz, lekin series ko'rib ko'proq yig'laysiz! 📺",
+    "Siz shunchalik romantikki, gullar sizdan kechirim so'raydi! 🌹",
+    "Like bosasiz, u ko'rmaydi. Ko'radi, javob bermaydi. Hayot shu! 😂",
+    "Siz shunchalik sevgiga to'lasizki, exes ham sizni sog'inadi — lekin qaytmaydi! 💘",
+    "DM yozasiz, u 'seen' qo'yadi. Siz yana yozasiz. Qahramonlik! 📱",
+    "Siz sevgi haqida shoir yozgandan ko'ra ko'proq gaplashasiz, lekin bitta ham crush yo'q! 😂",
+    "Sevgida shunchalik yomon omad bor, Cupid sizni ko'rsa kamonini yashiradi! 🏹",
+    "Romantik film ko'rasiz, yig'laysiz, keyin uyquga ketasiz — yolg'iz! 😭",
+
+    # === XOTIN QO'RQUVI ===
+    "Xotiningizdan shunchalik qo'rqasizki, telefon jiringlasa avval ismini tekshirасиз! 📵",
+    "Do'stlar chaqirsa 'xotinim qo'ymaydi' deysiz — bu endi klassik bahona! 😂",
+    "Siz uyda prezident emassiz — siz shunchaki vazir! Xotinim — prezident! 👑",
+    "Xotinim yo'q deb o'ylaysiz, lekin u doim biladi! Doim! 👁️",
+    "Do'stlar bilan futbol ko'rmoqchisiz, lekin avval 'ruxsat' olasiz! ⚽",
+    "Siz shunchalik botirki, xotiningiz uyquda bo'lgandagina qaror qilasiz! 😴",
+    "Xotinim oldida sher, tashqarida — mushuk! 🐱",
+    "Kechqurun do'stlar bilan chiqmoqchi, lekin telefon jiringladi — o'yin tugadi! 📞",
+    "Siz 'erkakman' deysiz, lekin xotinim 'kel' desa kapalak bo'lasiz! 🦋",
+    "Xotinim bilmaydi deb o'ylaysiz — u hammasini biladi, shunchaki kutadi! 😏",
+    "Pul so'rasangiz do'stlaringizdan emas — xotiningizdan ruxsat olasiz! 💸",
+    "Uyda ovoz baland gaplashib ko'ring — xotinim qarash bilan jimlatadi! 👀",
+
+    # === FUTBOL — REAL MADRID ===
+    "Barca muxlisi bo'lsangiz, Real Madrid Champions League o'ynayotganda nima ko'rasiz? Yig'i! 😭",
+    "FCB muxlisi bo'lsangiz, Haaland goldan keyin nima his qilasiz? Tanish his! ⚽",
+    "Barca 'La Masia' deya maqtanadi, Real Madrid esa Champions League kubogi bilan! 🏆",
+    "FCB muxlisi: 'Biz eng yaxshimiz!' Real Madrid: '15 ta UCL. Gaplashing!' 👑",
+    "Barca har yili 'bu yil bizning yilimiz' deydi — 2009 dan beri! 😂",
+    "Real Madrid yo'qotsa — baxtsiz kun. Barca yo'qotsa — oddiy kun! 😄",
+    "Barca muxlisi bo'lish = har yili umid bilan boshlab, yig'i bilan tugatish! 💔",
+    "FCB muxlisi Mbappeni ko'rsa nima his qiladi? O'zingiz biling! 😅",
+    "Real Madrid — club. Barca — telenovela! 📺",
+    "Barca trophy cabinet: changlar. Real Madrid: kuboklar! 🏆",
+
+    # === PS3 VA PES 2013 ===
+    "Siz shunchalik eskiki, hali PS3 da o'ynaysiz va buni maqtanasiz! 🎮",
+    "PES 2013 da Messi bilan o'ynaysiz — hayotda esa o'zingiz ham o'ynay olmaysiz! ⚽",
+    "PS3 — bu antika. Siz — muzey eksponati! 🏛️",
+    "PES 2013 grafika: piksel. Sizning hayot grafika: undan ham past! 😂",
+    "Hali PES 2013 o'ynayapsizmi? FIFA 2025 chiqdi, do'stim! 🎮",
+    "PS3 jiringlaydi, siz yugurasiz — xotinim chaqirsa bunday yugurmayman deysiz! 😂",
+    "PES 2013 da Ronaldo bilan gol urdingiz — real hayotda esa gol urolmaysiz! ⚽",
+    "Siz shunchalik eskiki, PS3 sizni ko'rsa 'aka' deydi! 🎮",
+    "PES 2013 — o'sha davrning eng zo'ri. Siz — o'sha davrning qoldig'i! 😄",
+    "Hali PS3 controller ushlaysizmi? Qo'llaringiz eskirib ketmadimi? 🕹️",
+
+    # === SARCASM ===
+    "Voy, siz kelibsiz! Bugun bayram ekan! 🎉 (yo'q, emas)",
+    "Zo'r fikr! Rostdan ham! (umuman emas) 👏",
+    "Siz shunchalik aqllisiz, har safar og'iz ochsangiz — hayratda qolaman! 🤯 (teskari ma'noda)",
+    "Ajoyib keldingiz! Umuman kutmagan edik! (kutgan edik, lekin boshqa maqsadda) 😏",
+    "Ha, albatta siz hamma narsani bilasiz! Google yopilsin endi! 🔍",
+    "Sizning fikringiz juda muhim! Yozib qo'ydim! (axlatga tashlash uchun) 📝",
+    "Siz shunchalik mehribonsizki, hatto dushmanlaringiz sizga rahm qiladi! 😇",
+    "Zo'r plan! Hech narsani o'ylamagansiz — lekin zo'r! 🧠",
+    "Siz bilan suhbatlashish — doimo ilhom beradi! (uxlash ilhomi) 😴",
+    "Voy, qanday kiyinibsiz! (ko'zim og'ridi lekin gapirmadim) 👔",
+
+    # === KO'NGILCHAN ===
+    "Siz shunchalik ko'ngilchansizki, mushuklar ham sizdan pul so'raydi! 😺",
+    "Do'st desa yordamlashasiz, tanish desa yordamlashasiz, begona desa ham yordamlashasiz — siz ATM emassiz! 🏧",
+    "Siz 'yo'q' deyolmaysiz — bu sizning kuchingiz ham, kulfatingiz ham! 😅",
+    "Hamma sizdan pul so'raydi, siz esa 'albatta' deysiz — keyin o'zingiz non topolmaysiz! 🍞",
+    "Siz shunchalik yaxshisizki, yomonlar ham sizni yaxshi ko'radi! 😇",
+    "Ko'ngilchanlik — yaxshi xislat. Sizniki esa kasallik darajasida! 🏥",
+    "Hamma muammosini sizga aytadi, chunki siz doktor emassiz lekin doktordan yaxshi tinglaasiz! 👂",
+    "Siz 'yo'q' deyolmasligingiz sababli, hozir 10 ta ish bajarasiz — barchasini boshqalar uchun! 😂",
+]
+
+QUIZ = [
+    {
+        "q": "Dunyodagi eng yaxshi futbol klubi qaysi?",
+        "a": "A) Barca",
+        "b": "B) FCB",
+        "joke": "Ikkalasi ham noto'g'ri — to'g'ri javob: Real Madrid! 👑🏆"
+    },
+    {
+        "q": "Xotiningizdan qo'rqasizmi?",
+        "a": "A) Ha, albatta",
+        "b": "B) Ha, juda ko'p",
+        "joke": "Ikkalasi ham to'g'ri — farqi yo'q! 😂👑"
+    },
+    {
+        "q": "PES 2013 yoki FIFA 2025?",
+        "a": "A) PES 2013 — klassik!",
+        "b": "B) PES 2013 — eng zo'r!",
+        "joke": "Ikkalasi ham PES 2013 — siz hali 2013 da yashaysiz! 🎮😂"
+    },
+    {
+        "q": "Barca necha marta UCL yutgan so'nggi 10 yilda?",
+        "a": "A) Ko'p marta",
+        "b": "B) Juda ko'p marta",
+        "joke": "Ikkalasi ham yolg'on — Real Madrid yutgan, Barca emas! 😂🏆"
+    },
+    {
+        "q": "Siz romantik odamsizmi?",
+        "a": "A) Ha, juda ham",
+        "b": "B) Ha, albatta",
+        "joke": "Ikkalasi ham yolg'on — crush sizga qaramaydi! 💔😂"
+    },
+    {
+        "q": "PS3 yoki PS5?",
+        "a": "A) PS3 — chunki boshqa yo'q",
+        "b": "B) PS3 — klassik!",
+        "joke": "Ikkalasi ham PS3 — siz hali o'sha davrdasiz! 🎮😅"
+    },
+    {
+        "q": "Erkak uyda kim?",
+        "a": "A) Xotin",
+        "b": "B) Albatta xotin",
+        "joke": "Ikkalasi ham to'g'ri — savol noto'g'ri edi! 👑😂"
+    },
+    {
+        "q": "Hayotdagi eng katta yolg'on nima?",
+        "a": "A) Men dietadaman",
+        "b": "B) 5 daqiqada kelaman",
+        "joke": "Ikkalasi ham to'g'ri — lekin uchinchisi: 'Xotinim bilmaydi!' 😂",
+    },
+    {
+        "q": "Messi yoki Ronaldo?",
+        "a": "A) Messi — u yaxshiroq",
+        "b": "B) Ronaldo — u yaxshiroq",
+        "joke": "Ikkalasi ham noto'g'ri — to'g'ri javob: RONALDO! CR7 GOAT! 🐐",
+    },
+    {
+        "q": "Do'stingiz pul so'rasa nima qilasiz?",
+        "a": "A) Beraman, men ko'ngilchanman",
+        "b": "B) Beraman, u qaytaradi (deb o'ylayman)",
+        "joke": "Ikkalasi ham — pul ketdi, do'stlik qoldi (pul qaytmaydi) 😂💸",
+    },
+    {
+        "q": "Kechqurun do'stlar chaqirsa?",
+        "a": "A) Xotinim qo'ymaydi",
+        "b": "B) Xotinim ruxsat bermaydi",
+        "joke": "Ikkalasi ham to'g'ri — xotinim prezident! 👑😂",
+    },
+    {
+        "q": "Siz sportzalsizmi?",
+        "a": "A) Ha, telefonda sport ko'raman",
+        "b": "B) Ha, PES o'ynayman",
+        "joke": "Ikkalasi ham sport — lekin o'tirgan holda! 😂🛋️",
+    },
+    {
+        "q": "Hayotda eng muhim narsa nima?",
+        "a": "A) Sog'liq",
+        "b": "B) Pul",
+        "joke": "Ikkalasi ham noto'g'ri — to'g'ri javob: WiFi parol! 📶😂",
+    },
+    {
+        "q": "Nonushta uchun nima yaxshi?",
+        "a": "A) Osh",
+        "b": "B) Yana osh",
+        "joke": "Ikkalasi ham to'g'ri — o'zbek nonushtasi = osh! 🍲😄",
+    },
+    {
+        "q": "Eng yaxshi diyeta nima?",
+        "a": "A) Ertaga boshlayman",
+        "b": "B) Dushanbadan boshlayman",
+        "joke": "Ikkalasi ham to'g'ri — diyeta hech qachon boshlanmaydi! 😂🍕",
+    },
+    {
+        "q": "Nega kech qoldingiz?",
+        "a": "A) Tiqilinch bo'ldi",
+        "b": "B) Soat to'xtab qoldi",
+        "joke": "Ikkalasi ham yolg'on — haqiqat: uydan kech chiqdingiz! 😂⏰",
+    },
+    {
+        "q": "Siz futbol o'ynay olasizmi?",
+        "a": "A) Ha, PES da",
+        "b": "B) Ha, YouTube da ko'raman",
+        "joke": "Ikkalasi ham to'g'ri — real maydonga chiqmagan! ⚽😂",
+    },
+    {
+        "q": "Eng yaxshi mashina qaysi?",
+        "a": "A) Nexia",
+        "b": "B) Matiz",
+        "joke": "Ikkalasi ham noto'g'ri — to'g'ri javob: xotiningizniki! 😂🚗",
+    },
+    {
+        "q": "Necha yil PS3 o'ynaysiz?",
+        "a": "A) 10 yildan ortiq",
+        "b": "B) Hali ham o'ynamoqdaman",
+        "joke": "Ikkalasi ham to'g'ri — PS3 sizning umr yo'ldoshingiz! 🎮😂",
+    },
+    {
+        "q": "Barca nima?",
+        "a": "A) Real Madriddan pastroq klub",
+        "b": "B) UCL'dan chiqib ketadigan klub",
+        "joke": "Ikkalasi ham to'g'ri! Barca muxlislari yig'lamasin! 😂🏆",
+    },
+]
+
+waiting = {}
 
 def main_keyboard():
     buttons = [
         [
             InlineKeyboardButton("🤣 Mazax qil", callback_data="roast"),
-            InlineKeyboardButton("😈 Rost/Yolg'on", callback_data="truthdare"),
+            InlineKeyboardButton("🧠 Kulgili Quiz", callback_data="quiz"),
         ],
         [
-            InlineKeyboardButton("🎱 Sehrli shar", callback_data="magic8"),
-            InlineKeyboardButton("🔥 Vibe check", callback_data="vibe"),
-        ],
-        [
-            InlineKeyboardButton("🧠 Viktorina", callback_data="quiz"),
-            InlineKeyboardButton("🎭 Ikkalasidan biri", callback_data="wouldyou"),
-        ],
-        [
-            InlineKeyboardButton("🍕 Ovqat tanlash", callback_data="food"),
-            InlineKeyboardButton("🎬 Film tanlash", callback_data="movie"),
-        ],
-        [
-            InlineKeyboardButton("💰 Hisobni bo'lish", callback_data="bill"),
-            InlineKeyboardButton("🎤 Rap jang", callback_data="rap"),
-        ],
-        [
-            InlineKeyboardButton("📖 Hikoya yozish", callback_data="story"),
-            InlineKeyboardButton("🤖 Har narsani so'ra", callback_data="ask"),
+            InlineKeyboardButton("🔄 Tasodifiy mazax", callback_data="random_roast"),
+            InlineKeyboardButton("❓ Tasodifiy quiz", callback_data="random_quiz"),
         ],
     ]
     return InlineKeyboardMarkup(buttons)
 
-# Store waiting states
-waiting = {}
+def back_keyboard(callback):
+    return InlineKeyboardMarkup([[
+        InlineKeyboardButton("🔄 Yana", callback_data=callback),
+        InlineKeyboardButton("🏠 Menyu", callback_data="back")
+    ]])
 
-async def start(update: Update, context):
-    lang = detect_lang(update.message.text or "")
-    if lang == "uz":
-        text = "Salom! 👋 Men do'stlar guruhi uchun kulgili botman!\n\nNimani xohlaysiz?"
-    else:
-        text = "Hey! 👋 I'm a fun bot for your friends group!\n\nWhat do you want to do?"
-    await update.message.reply_text(text, reply_markup=main_keyboard())
+def quiz_keyboard(quiz_item):
+    buttons = [
+        [
+            InlineKeyboardButton(quiz_item["a"], callback_data="quiz_wrong"),
+            InlineKeyboardButton(quiz_item["b"], callback_data="quiz_wrong"),
+        ]
+    ]
+    return InlineKeyboardMarkup(buttons)
 
-async def menu(update: Update, context):
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    await update.message.reply_text(
+        "Salom! 👋 Do'stlar guruhi uchun kulgili bot!\n\n"
+        "Tanlang:",
+        reply_markup=main_keyboard()
+    )
+
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
     await update.message.reply_text(
         "🎉 Menyuni tanlang:",
         reply_markup=main_keyboard()
     )
 
-async def handle_callback(update: Update, context):
+async def handle_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
     query = update.callback_query
     await query.answer()
-    user = query.from_user.first_name
     cat = query.data
     chat_id = query.message.chat_id
+    user = query.from_user.first_name
 
     if cat == "roast":
         waiting[chat_id] = "roast"
         await query.edit_message_text(
-            f"😈 Kim haqida mazax qilaylik?\nIsm yozing yoki @ bilan tag qiling:"
+            "😈 Kim haqida mazax qilaylik?\n\nIsm yozing:"
         )
 
-    elif cat == "truthdare":
-        lang = "uz"
-        prompt = "Rost yoki do'q o'yini uchun qiziqarli va kulgili 1 ta savol yoz. O'zbek tilida."
-        result = ask_gemini(prompt, lang)
+    elif cat == "random_roast":
+        roast = random.choice(ROASTS)
         await query.edit_message_text(
-            f"😈 Rost yoki Do'q!\n\n{result}",
+            f"🤣 Mazax:\n\n{roast}",
+            reply_markup=back_keyboard("random_roast")
+        )
+
+    elif cat == "quiz" or cat == "random_quiz":
+        q = random.choice(QUIZ)
+        context.bot_data[f"quiz_{chat_id}"] = q
+        await query.edit_message_text(
+            f"🧠 Quiz!\n\n{q['q']}\n\nJavobni tanlang:",
+            reply_markup=quiz_keyboard(q)
+        )
+
+    elif cat == "quiz_wrong":
+        q = context.bot_data.get(f"quiz_{chat_id}", {})
+        joke = q.get("joke", "Ikkalasi ham noto'g'ri! 😂")
+        await query.edit_message_text(
+            f"😂 Noto'g'ri!\n\n{joke}",
             reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana biri", callback_data="truthdare"),
+                InlineKeyboardButton("🔄 Yana quiz", callback_data="random_quiz"),
                 InlineKeyboardButton("🏠 Menyu", callback_data="back")
             ]])
-        )
-
-    elif cat == "magic8":
-        waiting[chat_id] = "magic8"
-        await query.edit_message_text("🎱 Sehrli sharga savolingizni yozing:")
-
-    elif cat == "vibe":
-        vibes = [
-            "🔥 Guruh bugun OLOVDA! Hamma energiyasi zo'r!",
-            "😴 Guruh bugun uxlamoqda... Kimdir yoqib yuboring!",
-            "🤪 Guruh bugun aqldan ozgan! Yaxshi ma'noda 😄",
-            "💀 Guruh bugun o'lik... Kimdir kulgili narsa yuboring!",
-            "👑 Guruh bugun KING mode'da! Hamma zo'r!",
-            "🌊 Guruh bugun chill. Hammasi yaxshi.",
-            "⚡ Guruh bugun elektrlanган! Nima bo'lyapti?!",
-            "🎭 Guruh bugun drama bor shekilli 👀",
-        ]
-        await query.edit_message_text(
-            f"🔥 Vibe Check!\n\n{random.choice(vibes)}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana", callback_data="vibe"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif cat == "quiz":
-        prompt = "Qiziqarli viktorina savoli yoz. 4 ta javob varianti ber (A, B, C, D). To'g'ri javobni ham ayt. O'zbek tilida. Kulgili bo'lsin."
-        result = ask_gemini(prompt, "uz")
-        await query.edit_message_text(
-            f"🧠 Viktorina!\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana savol", callback_data="quiz"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif cat == "wouldyou":
-        prompt = "Would you rather o'yini uchun qiziqarli va kulgili 1 ta savol yoz. Ikkita variant ber. O'zbek tilida."
-        result = ask_gemini(prompt, "uz")
-        await query.edit_message_text(
-            f"🎭 Ikkalasidan birini tanlang!\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana biri", callback_data="wouldyou"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif cat == "food":
-        prompt = "Toshkentdagi yoki o'zbek oshxonasidan bitta tasodifiy taom tavsiya qil. Nomi, tavsifi va nega yeyish kerakligini kulgili tarzda yoz. O'zbek tilida."
-        result = ask_gemini(prompt, "uz")
-        await query.edit_message_text(
-            f"🍕 Bugun shu yeng!\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Boshqa taom", callback_data="food"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif cat == "movie":
-        prompt = "Bitta tasodifiy film tavsiya qil. Film nomi, janri, qisqa tavsifi va nega ko'rish kerakligini kulgili tarzda yoz. O'zbek tilida."
-        result = ask_gemini(prompt, "uz")
-        await query.edit_message_text(
-            f"🎬 Bugun shu filmni ko'ring!\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Boshqa film", callback_data="movie"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif cat == "rap":
-        waiting[chat_id] = "rap"
-        await query.edit_message_text(
-            "🎤 Rap jang!\n\nKim haqida rap yozaylik? Ism yozing:"
-        )
-
-    elif cat == "story":
-        waiting[chat_id] = "story"
-        context.bot_data[f"story_{chat_id}"] = []
-        await query.edit_message_text(
-            "📖 Birga hikoya yozamiz!\n\nBirinchi jumla siz yozing — men davom ettiraman:"
-        )
-
-    elif cat == "ask":
-        waiting[chat_id] = "ask"
-        await query.edit_message_text(
-            "🤖 Savolingizni yozing — har qanday narsani so'rang!"
         )
 
     elif cat == "back":
@@ -204,97 +306,30 @@ async def handle_callback(update: Update, context):
             reply_markup=main_keyboard()
         )
 
-async def handle_message(update: Update, context):
+async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     msg = update.message
     if not msg or not msg.text:
         return
     text = msg.text.strip()
     chat_id = msg.chat_id
     user = msg.from_user.first_name
-    lang = detect_lang(text)
-
     state = waiting.get(chat_id)
 
     if state == "roast":
         waiting.pop(chat_id, None)
-        prompt = f"{user} do'stini mazax qilmoqchi. Maqsad: {text}. Kulgili, lekin yomon emas, do'stona mazax yoz. 3-4 ta jumla. O'zbek tilida."
-        result = ask_gemini(prompt, "uz")
+        roast = random.choice(ROASTS)
         await msg.reply_text(
-            f"🤣 {text} haqida mazax:\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana", callback_data="roast"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif state == "magic8":
-        waiting.pop(chat_id, None)
-        answers_uz = [
-            "Ha, albatta! ✅", "Yo'q, umuman! ❌",
-            "Balki... 🤔", "100% ha! 🎯",
-            "Hech qachon! 😤", "Bugun emas, ertaga 😅",
-            "Katta ehtimol bor! 🌟", "Men ham bilmayman 🤷",
-            "Qo'lingizni ko'taringchi... HA! ✋",
-            "Uy hayvonlaringizdan so'rang 🐱"
-        ]
-        await msg.reply_text(
-            f"🎱 Savol: {text}\n\nSehrli shar javob berdi:\n\n{random.choice(answers_uz)}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana savol", callback_data="magic8"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif state == "rap":
-        waiting.pop(chat_id, None)
-        prompt = f"{text} haqida kulgili o'zbek tilida rap yoz. 4-8 qator. Qofiyali bo'lsin. Kulgili va do'stona."
-        result = ask_gemini(prompt, "uz")
-        await msg.reply_text(
-            f"🎤 {text} haqida rap:\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana rap", callback_data="rap"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
-        )
-
-    elif state == "story":
-        story_key = f"story_{chat_id}"
-        story = context.bot_data.get(story_key, [])
-        story.append(f"{user}: {text}")
-        prompt = f"Bu hikoyaning davomi:\n{chr(10).join(story)}\n\nBir jumla bilan davom ettir. O'zbek tilida. Qiziqarli va kulgili bo'lsin."
-        result = ask_gemini(prompt, "uz")
-        story.append(f"Bot: {result}")
-        context.bot_data[story_key] = story
-        await msg.reply_text(
-            f"📖 Bot davom ettirdi:\n\n{result}\n\nSiz davom ettiring yoki /menyu bosing:",
-        )
-
-    elif state == "ask":
-        waiting.pop(chat_id, None)
-        prompt = text
-        result = ask_gemini(prompt, lang)
-        await msg.reply_text(
-            f"🤖 Javob:\n\n{result}",
-            reply_markup=InlineKeyboardMarkup([[
-                InlineKeyboardButton("🔄 Yana so'ra", callback_data="ask"),
-                InlineKeyboardButton("🏠 Menyu", callback_data="back")
-            ]])
+            f"🤣 {text} haqida mazax:\n\n{roast}",
+            reply_markup=back_keyboard("roast")
         )
 
     else:
-        # No state — check if it's a command-like message
         t = text.lower()
-        if any(w in t for w in ["salom", "hello", "hi", "hey", "start", "boshlash"]):
-            if lang == "uz":
-                await msg.reply_text(
-                    "Salom! 👋 Men do'stlar guruhi uchun kulgili botman!\n\nNimani xohlaysiz?",
-                    reply_markup=main_keyboard()
-                )
-            else:
-                await msg.reply_text(
-                    "Hey! 👋 I'm a fun bot for your friends group!\n\nWhat do you want to do?",
-                    reply_markup=main_keyboard()
-                )
+        if any(w in t for w in ["salom", "hello", "hi", "hey", "boshlash", "start", "menyu", "menu"]):
+            await msg.reply_text(
+                f"Salom, {user}! 👋\n\nNimani xohlaysiz?",
+                reply_markup=main_keyboard()
+            )
 
 app = ApplicationBuilder().token(TELEGRAM_TOKEN).build()
 app.add_handler(CommandHandler("start", start))
@@ -302,5 +337,5 @@ app.add_handler(CommandHandler("menyu", menu))
 app.add_handler(CommandHandler("menu", menu))
 app.add_handler(CallbackQueryHandler(handle_callback))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, handle_message))
-print("✅ Fun bot is running!")
+print("✅ Fun bot running! No AI needed!")
 app.run_polling()
